@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f0f0;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+
+        .frame {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .container {
+            text-align: center;
+        }
+
+        .logo {
+            margin-bottom: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            width: 200px;
+            height: auto;
+        }
+
+        h1 {
+            color: #3498db;
+            margin-bottom: 20px;
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        p {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        li {
+            margin: 0 10px;
+        }
+
+            li a {
+                text-decoration: none;
+                color: #fff;
+                font-weight: bold;
+                padding: 12px 24px;
+                border-radius: 8px;
+                background-color: #27ae60;
+                transition: all 0.3s ease;
+                font-size: 16px;
+                text-transform: uppercase;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }
+
+                li a:hover {
+                    background-color: #2ecc71;
+                    transform: scale(1.05);
+                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+                }
+
+        #video_feed {
+            display: block;
+            margin: 40px auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+            #video_feed:hover {
+                transform: scale(1.05);
+                box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+            }
+    </style>
+</head>
+<body>
+    <div class="frame">
+        <div class="container">
+            <img class="logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo">
+            <h1>Face Sphere</h1>
+            <p>Select your camera:</p>
+            <ul>
+                <li><a onclick="startCamera(0)">Camera 1</a></li>
+                <li><a onclick="startCamera(1)">Camera 2</a></li>
+                <li><a onclick="startCamera(2)">Camera 3</a></li>
+                <li><a onclick="startCamera(3)">Camera 4</a></li>
+            </ul>
+            <div>
+                <img id="video_feed" src="{{ url_for('static', filename='images/a1.png') }}" alt="Camera Feed" width="480" height="360">
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        function startCamera(camera_id) {
+            var video_feed = document.getElementById('video_feed');
+            video_feed.src = "/video_feed/" + camera_id;
+        }
+    </script>
+</body>
+</html>
