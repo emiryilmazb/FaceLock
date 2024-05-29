@@ -1,86 +1,126 @@
 import cv2
+import face_recognition
 import os
-import numpy as np
 import RPi.GPIO as GPIO
-from time import sleep
+import time
+from picamera2 import Picamera2
 
-# Setup GPIO
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
+# GPIO setup
 RED_LED_PIN = 24
 GREEN_LED_PIN = 23
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)
 GPIO.setup(RED_LED_PIN, GPIO.OUT)
 GPIO.setup(GREEN_LED_PIN, GPIO.OUT)
 
-# Function to turn on the red LED
-def red_led_on():
-    GPIO.output(RED_LED_PIN, GPIO.HIGH)
-    GPIO.output(GREEN_LED_PIN, GPIO.LOW)
+# Function to initialize the Raspberry Pi camera module using picamera2
+def initialize_camera():
+    try:
+        picam2 = Picamera2()
+        picam2.start()
+        return picam2
+    except Exception as e:
+        print(f"Error initializing camera: {e}")
+        GPIO.cleanup()
+        exit(1)
 
-# Function to turn on the green LED
-def green_led_on():
-    GPIO.output(GREEN_LED_PIN, GPIO.HIGH)
-    GPIO.output(RED_LED_PIN, GPIO.LOW)
-
-# Function to load images and labels
-def load_images_from_folder(folder):
-    images = []
-    labels = []
-    label_dict = {}
-    label_count = 0
-    for filename in os.listdir(folder):
-        img_path = os.path.join(folder, filename)
-        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-        if img is not None:
-            images.append(img)
-            label = filename.split('.')[0]  # Assuming filenames are in the format 'username.jpg'
-            if label not in label_dict:
-                label_dict[label] = label_count
-                label_count += 1
-            labels.append(label_dict[label])
-    return images, labels, label_dict
-
-# Load known user images and labels
-folder_path = 'users'
-images, labels, label_dict = load_images_from_folder(folder_path)
-images = [cv2.resize(img, (200, 200)) for img in images]
-
-# Create and train face recognizer
-face_recognizer = cv2.face.LBPHFaceRecognizer_create()
-face_recognizer.train(images, np.array(labels))
-
-# Initialize camera
-camera = cv2.VideoCapture(0)
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-try:
-    while True:
-        red_led_on()
-        ret, frame = camera.read()
-        if not ret:
-            print("Failed to grab frame")
-            break
-        
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
-        for (x, y, w, h) in faces:
-            face = gray_frame[y:y+h, x:x+w]
-            face_resized = cv2.resize(face, (200, 200))
-
-            label, confidence = face_recognizer.predict(face_resized)
-            print(f"Label: {label}, Confidence: {confidence}")
-
-            if confidence < 50:  # Confidence threshold, adjust as needed
-                user_name = [name for name, value in label_dict.items() if value == label][0]
-                print(f"The door is opening for {user_name}")
-                green_led_on()
-                sleep(5)  # Keep green LED on for 5 seconds
+# Function to load and encode user images
+def load_user_images(users_path="users"):
+    known_face_encodings = []
+    known_face_names = []
+    for filename in os.listdir(users_path):
+        if filename.endswith(".jpg") or filename.endswith(".png"):
+            image_path = os.path.join(users_path, filename)
+            user_image = face_recognition.load_image_file(image_path)
+            user_face_encodings = face_recognition.face_encodings(user_image)
+            
+            if user_face_encodings:
+                user_face_encoding = user_face_encodings[0]
+                known_face_encodings.append(user_face_encoding)
+                known_face_names.append(os.path.splitext(filename)[0])
             else:
-                red_led_on()
+                print(f"No faces found in image {filename}")
+                
+    return known_face_encodings, known_face_names
 
-        sleep(1)  # Check every second
-finally:
-    camera.release()
+# Function to control LEDs
+def set_leds(red_on, green_on):
+    GPIO.output(RED_LED_PIN, red_on)
+    GPIO.output(GREEN_LED_PIN, green_on)
+
+def main():
+    # Initialize camera
+    picam2 = initialize_camera()
+
+    # Load user images
+    known_face_encodings, known_face_names = load_user_images()
+
+    # Initialize LEDs
+    set_leds(red_on=True, green_on=False)
+
+    while True:
+        # Capture image from the camera
+        frame = picam2.capture_array()
+
+        # Ensure the image is in RGB format
+        if frame.shape[2] == 4:  # If the image has an alpha channel (RGBA), convert to RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
+        else:  # Otherwise, convert BGR to RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Resize frame for faster processing
+        small_frame = cv2.resize(rgb_frame, (0, 0), fx=0.25, fy=0.25)
+
+        # Detect faces in the frame
+        face_locations = face_recognition.face_locations(small_frame)
+        face_encodings = face_recognition.face_encodings(small_frame, face_locations)
+
+        face_names = []
+        for face_encoding in face_encodings:
+            matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+            name = "Unknown"
+
+            if True in matches:
+                first_match_index = matches.index(True)
+                name = known_face_names[first_match_index]
+
+            face_names.append(name)
+
+        # Check if any authorized faces are recognized
+        if "Unknown" in face_names or not face_names:
+            set_leds(red_on=True, green_on=False)
+        else:
+            set_leds(red_on=False, green_on=True)
+            for name in face_names:
+                if name != "Unknown":
+                    print(f"The door is opened for {name}")
+                    break
+            time.sleep(5)  # Keep green LED on for 5 seconds
+            set_leds(red_on=True, green_on=False)
+
+        # Draw face boxes and display names on the frame
+        for (top, right, bottom, left), name in zip(face_locations, face_names):
+            top *= 4
+            right *= 4
+            bottom *= 4
+            left *= 4
+
+            cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+            cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
+            font = cv2.FONT_HERSHEY_DUPLEX
+            cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+
+        # Display the resulting frame
+        cv2.imshow('Video', frame)
+
+        # Hit 'q' on the keyboard to quit the program
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # Release handle to the camera and cleanup GPIO
+    picam2.stop()
     cv2.destroyAllWindows()
     GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()
